@@ -696,6 +696,24 @@ $(document).ready(function() {
         case 76: // l: go right (descend to first child)
           element = currentComment.firstChildElement;
           break;
+        case 80: // p: previous unread comment
+          while (currentIndex--) {
+            if (currentIndex == -1) {
+              break;
+            }
+            if (Lobsters.commentGraph[currentIndex].isUnread) {
+              element = Lobsters.commentGraph[currentIndex].commentElement;
+            }
+          }
+        case 78: // n: next unread comment
+          while (currentIndex++) {
+            if (currentIndex == Lobsters.commentGraph.length) {
+              break;
+            }
+            if (Lobsters.commentGraph[currentIndex].isUnread) {
+              element = Lobsters.commentGraph[currentIndex].commentElement;
+            }
+          }
         default:
           return;
       }
