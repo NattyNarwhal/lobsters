@@ -6,6 +6,7 @@
 
 var _Lobsters = Class.extend({
   curUser: null,
+  commentGraph: [],
 
   storyFlagReasons: { <%= Vote::STORY_REASONS.map{|k,v|
       "#{k.inspect}: #{v.inspect}" }.join(", ") %> },
@@ -383,6 +384,66 @@ var _Lobsters = Class.extend({
       encodeURIComponent(document.location);
     return false;
   },
+
+  buildCommentGraph: function() {
+    $(".comment").each(function (index, commentElement) {
+      let $ce = $(commentElement);
+      let idRaw = $ce.attr("id");
+      // the comment submission form is a comment even when it isn't
+      if (idRaw === undefined) {
+        return;
+      }
+      // chop off the 'c_'
+      let id = idRaw.substring(2);
+      // the siblings are next, not children of the element,
+      // so it isn't recursive unread
+      let isUnread = $ce.find(".comment_unread").length > 0;
+      // now find the:
+      // - previous comment
+      // - parent
+      // - first child
+      // - next comment
+      // this is extremely sensitive on the HTML and has to ignore
+      // elements like cosmetic graph lines (hence odd scoping)
+      let $ceParent = $ce.parent();
+      let prevElement = $ceParent.prev().children(".comment")[0];
+      let nextElement = $ceParent.next().children(".comment")[0];
+      let parentElement = $ceParent.parent().prevAll(".comment")[0];
+      let firstChildElement = $ce.nextAll(".comments").find(".comment")[0];
+      let commentObject = {
+        id: id,
+        isUnread: isUnread,
+        commentElement: commentElement,
+        prevElement: prevElement,
+        nextElement: nextElement,
+        parentElement: parentElement,
+        firstChildElement: firstChildElement
+      };
+      // comments are added in-order, which makes some operations easy
+      Lobsters.commentGraph.push(commentObject);
+    });
+  },
+
+  focusElement: function(element) {
+    window.location.hash = "#" + $(element).attr("id");
+  },
+
+  getCommentGraphItemByElement: function(element) {
+    return Lobsters.commentGraph.find(e => e.commentElement == element);
+  },
+
+  getCommentGraphItemById: function(id) {
+    return Lobsters.commentGraph.find(e => e.id == id);
+  },
+
+  getCurrentFocusedComment: function() {
+    let hashRaw = window.location.hash;
+    if (hashRaw.length == 0 || !hashRaw.startsWith("#c_")) {
+      return null;
+    }
+    let hash = hashRaw.substring(3);
+    return Lobsters.getCommentGraphItemById(hash);
+  },
 });
 
 var Lobsters = new _Lobsters();
@@ -397,6 +458,7 @@ $(document).ready(function() {
     Lobsters.upvoteComment(this);
     return false;
   });
+
 
   $("li.story a.flagger").click(function() {
     Lobsters.flagStory(this);
@@ -597,6 +659,49 @@ $(document).ready(function() {
   $('textarea#comment').keydown(function (e) {
     if ((e.metaKey || e.ctrlKey) && e.keyCode == 13) {
       $(".comment-post").click();
+    }
+  });
+
+  Lobsters.buildCommentGraph();
+
+  $(document).keydown(function (e) {
+    console.log(e.keyCode);
+
+    // reject IME events
+    if (e.isComposing || e.keyCode === 229) {
+      return;
+    }
+
+    // we focus the first comment so we have something to grab onto if we don't
+    var element = null;
+    var currentComment = Lobsters.getCurrentFocusedComment();
+    var currentIndex = Lobsters.commentGraph.indexOf(currentComment);
+    if (window.location.hash.length == 0 && Lobsters.commentGraph.length > 0) {
+      element = Lobsters.commentGraph[0].commentElement;
+    } else if (currentComment) {
+      switch (e.keyCode) {
+        case 72: // h: go left (ascend to parent)
+          element = currentComment.parentElement;
+          break;
+        case 74: // j: go down (don't need to traverse, in order)
+          if (++currentIndex != Lobsters.commentGraph.length) {
+            element = Lobsters.commentGraph[currentIndex].commentElement;
+          }
+          break;
+        case 75: // k: go up in order (don't need to traverse)
+          if (--currentIndex > -1) {
+            element = Lobsters.commentGraph[currentIndex].commentElement;
+          }
+          break;
+        case 76: // l: go right (descend to first child)
+          element = currentComment.firstChildElement;
+          break;
+        default:
+          return;
+      }
+    }
+    if (element) {
+      Lobsters.focusElement(element);
     }
   });
 });
